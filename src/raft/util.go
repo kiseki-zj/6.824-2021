@@ -35,6 +35,7 @@ func (rf *Raft) ChangeState(state NodeState) {
 			rf.nextIndex[i] = rf.getLastLog().Idx + 1
 		}
 		rf.matchIndex[rf.me] = rf.getLastLog().Idx
+		rf.heartbeatTimer.Reset(StableHeartbeatTimeout())
 	}
 	rf.persist()
 }
@@ -76,6 +77,7 @@ func (rf *Raft) genAppendEntriesRequest(prevLogIndex int) *AppendEntriesArgs {
 		PrevLogTerm:  rf.getLogTermWithIndex(prevLogIndex),
 		LeaderCommit: rf.commitIndex,
 	}
+	DPrintf("[genAppendEntries]prevlogIdx=%v, loglen=%v, getlastlog.idx=%v", prevLogIndex, len(rf.logs), rf.getLastLog().Idx)
 	if prevLogIndex == rf.getLastLog().Idx {
 		//heartbeat
 		request.Entries = []Entry{}
@@ -99,4 +101,17 @@ func (rf *Raft) isLogUpToDate(term, index int) bool {
 	lastIndex := rf.getLastLog().Idx
 	lastTerm := rf.getLastLog().Term
 	return term > lastTerm || (term == lastTerm && index >= lastIndex)
+}
+
+func (rf *Raft) needReplicating(peer int) bool {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.state == StateLeader && rf.matchIndex[peer] < rf.getLastLog().Idx
+}
+
+func Max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
